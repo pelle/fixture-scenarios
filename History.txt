@@ -1,2 +1,5 @@
 = TRUNK
+  - Extend ActiveSupport::TestCase instead of Test::Unit::TestCase to make it work with rspec 1.1.12 [Pelle Braendgaard]
+  - added support for fixtures :all [Pelle Braendgaard]
   - added "scenarios_load_root_fixtures" option to set default root loading [Peter Williams]
+  

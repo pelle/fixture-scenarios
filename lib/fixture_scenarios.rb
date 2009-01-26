@@ -158,111 +158,114 @@ module Test
   end
 end
 
-module Test #:nodoc:
-  module Unit #:nodoc:
-    class TestCase #:nodoc:
-      class_inheritable_accessor :fixture_file_names
-      class_inheritable_accessor :ruby_file_names
-      
-      class_inheritable_accessor :scenarios_load_root_fixtures
-      
-      self.ruby_file_names = []
-      self.fixture_file_names = {}
-      
-      self.scenarios_load_root_fixtures = true
-      
-      def self.finish
-        Fixtures.destroy_fixtures(fixture_table_names)
-      end
-      
-      def self.fixtures(*table_names)
-        table_names = table_names.flatten.map { |n| n.to_s }
-        
-        table_names.each do |table_name|
-          self.fixture_file_names[table_name] ||= []
-          self.fixture_file_names[table_name] << "#{self.fixture_path}#{table_name}.yml"
-        end
-        
-        self.fixture_table_names |= table_names
-        require_fixture_classes(table_names)
-        setup_fixture_accessors(table_names)
-      end
-      
-      def self.scenario(scenario_name = nil, options = {})
-        # handle options
-        defaults = {:root => self.scenarios_load_root_fixtures}
-        options = defaults.merge(options)
-        
-        # find the scenario directory
-        scenario_path = Dir.glob("#{self.fixture_path}**/*").grep(Regexp.new("/#{scenario_name}$")).first
-        scenario_path = scenario_path[self.fixture_path.length..scenario_path.length]
-        scenario_dirs = scenario_path.split('/').unshift('')
-
-        # collect the file paths from which to load
-        scenario_paths = []
-        while !scenario_dirs.empty?
-          unless !options[:root] && scenario_dirs.size == 1
-            scenario_paths << self.fixture_path.chop + scenario_dirs.join('/')
-          end
-          scenario_dirs.pop
-        end
-        scenario_paths.reverse!
-                
-        # collect the list of yaml and ruby files
-        yaml_files = []
-        ruby_files = []
-        scenario_paths.each do |path|
-          yaml_files |= Dir.glob("#{path}/*.y{am,m}l")
-          ruby_files |= Dir.glob("#{path}/*.rb")
-        end
-                
-        # collect table names
-        table_names = []
-        yaml_files.each do |file_path|
-          file_name = file_path.split("/").last
-          table_name = file_name[0..file_name.rindex('.') - 1]
-          table_names << table_name
-          self.fixture_file_names[table_name] ||= []
-          self.fixture_file_names[table_name] << file_path
-        end
-        
-        # collect ruby files
-        self.ruby_file_names |= ruby_files
-                
-        self.fixture_table_names |= table_names
-        
-        require_fixture_classes(table_names)
-        setup_fixture_accessors(table_names)
-      end
-      
-      def self.setup_fixture_accessors(table_names=nil)
-        (table_names || fixture_table_names).each do |table_name|
-          table_name = table_name.split('.').last
-          define_method(table_name) do |fixture, *optionals|
-            force_reload = optionals.shift
-            @fixture_cache[table_name] ||= Hash.new
-            @fixture_cache[table_name][fixture] = nil if force_reload
-            if @loaded_fixtures[table_name][fixture.to_s]
-              @fixture_cache[table_name][fixture] ||= @loaded_fixtures[table_name][fixture.to_s].find
-            else
-              raise StandardError, "No fixture with name '#{fixture}' found for table '#{table_name}'"
-            end
-          end
-        end
-      end
-      
-      private
-        def load_fixtures
-          @loaded_fixtures = {}
-          fixtures = Fixtures.create_fixtures(fixture_path, fixture_table_names, fixture_file_names, ruby_file_names, fixture_class_names)
-          unless fixtures.nil?
-            if fixtures.instance_of?(Fixtures)
-              @loaded_fixtures[fixtures.table_name.split('.').last] = fixtures
-            else
-              fixtures.each { |f| @loaded_fixtures[f.table_name.split('.').last] = f }
-            end
-          end
-        end
+module ActiveSupport #:nodoc:
+  class TestCase #:nodoc:
+    class_inheritable_accessor :fixture_file_names
+    class_inheritable_accessor :ruby_file_names
+    
+    class_inheritable_accessor :scenarios_load_root_fixtures
+    
+    self.ruby_file_names = []
+    self.fixture_file_names = {}
+    
+    self.scenarios_load_root_fixtures = true
+    
+    def self.finish
+      Fixtures.destroy_fixtures(fixture_table_names)
     end
+    
+    def self.fixtures(*table_names)
+      if table_names.first == :all
+        table_names = Dir["#{fixture_path}/*.yml"] + Dir["#{fixture_path}/*.csv"]
+        table_names.map! { |f| File.basename(f).split('.')[0..-2].join('.') }
+      else
+        table_names = table_names.flatten.map { |n| n.to_s }
+      end
+      
+      table_names.each do |table_name|
+        self.fixture_file_names[table_name] ||= []
+        self.fixture_file_names[table_name] << "#{self.fixture_path}#{table_name}.yml"
+      end
+      
+      self.fixture_table_names |= table_names
+      require_fixture_classes(table_names)
+      setup_fixture_accessors(table_names)
+    end
+    
+    def self.scenario(scenario_name = nil, options = {})
+      # handle options
+      defaults = {:root => self.scenarios_load_root_fixtures}
+      options = defaults.merge(options)
+      
+      # find the scenario directory
+      scenario_path = Dir.glob("#{self.fixture_path}**/*").grep(Regexp.new("/#{scenario_name}$")).first
+      scenario_path = scenario_path[self.fixture_path.length..scenario_path.length]
+      scenario_dirs = scenario_path.split('/').unshift('')
+
+      # collect the file paths from which to load
+      scenario_paths = []
+      while !scenario_dirs.empty?
+        unless !options[:root] && scenario_dirs.size == 1
+          scenario_paths << self.fixture_path.chop + scenario_dirs.join('/')
+        end
+        scenario_dirs.pop
+      end
+      scenario_paths.reverse!
+              
+      # collect the list of yaml and ruby files
+      yaml_files = []
+      ruby_files = []
+      scenario_paths.each do |path|
+        yaml_files |= Dir.glob("#{path}/*.y{am,m}l")
+        ruby_files |= Dir.glob("#{path}/*.rb")
+      end
+              
+      # collect table names
+      table_names = []
+      yaml_files.each do |file_path|
+        file_name = file_path.split("/").last
+        table_name = file_name[0..file_name.rindex('.') - 1]
+        table_names << table_name
+        self.fixture_file_names[table_name] ||= []
+        self.fixture_file_names[table_name] << file_path
+      end
+      
+      # collect ruby files
+      self.ruby_file_names |= ruby_files
+              
+      self.fixture_table_names |= table_names
+      
+      require_fixture_classes(table_names)
+      setup_fixture_accessors(table_names)
+    end
+    
+    def self.setup_fixture_accessors(table_names=nil)
+      (table_names || fixture_table_names).each do |table_name|
+        table_name = table_name.split('.').last
+        define_method(table_name) do |fixture, *optionals|
+          force_reload = optionals.shift
+          @fixture_cache[table_name] ||= Hash.new
+          @fixture_cache[table_name][fixture] = nil if force_reload
+          if @loaded_fixtures[table_name][fixture.to_s]
+            @fixture_cache[table_name][fixture] ||= @loaded_fixtures[table_name][fixture.to_s].find
+          else
+            raise StandardError, "No fixture with name '#{fixture}' found for table '#{table_name}'"
+          end
+        end
+      end
+    end
+    
+    private
+      def load_fixtures
+        @loaded_fixtures = {}
+        fixtures = Fixtures.create_fixtures(fixture_path, fixture_table_names, fixture_file_names, ruby_file_names, fixture_class_names)
+        unless fixtures.nil?
+          if fixtures.instance_of?(Fixtures)
+            @loaded_fixtures[fixtures.table_name.split('.').last] = fixtures
+          else
+            fixtures.each { |f| @loaded_fixtures[f.table_name.split('.').last] = f }
+          end
+        end
+      end
   end
 end
